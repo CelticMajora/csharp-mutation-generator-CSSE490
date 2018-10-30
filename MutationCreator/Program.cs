@@ -11,7 +11,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace MutationCreator
 {
     class Program
-    {
+    {      
         static void Main(string[] args)
         {
             if(args.Length < 1)
@@ -41,8 +41,43 @@ namespace MutationCreator
         }
 
         static ISet<SyntaxTree> makeMutations(SyntaxTree ogTree, SemanticModel model)
-        {
+        {            
+            return traverseTreeForMutations(ogTree.GetRoot());
+        }
 
+        static ISet<SyntaxTree> traverseTreeForMutations(SyntaxNode node)
+        {
+            ISet<SyntaxTree> mutationsForCurrentNode = getMutationsForNode(node);
+
+            foreach (SyntaxNode descendant in node.DescendantNodes())
+            {
+                mutationsForCurrentNode.UnionWith(traverseTreeForMutations(descendant));
+            }
+            return mutationsForCurrentNode;
+        }
+
+        static ISet<SyntaxTree> getMutationsForNode(SyntaxNode node)
+        {
+            ISet<SyntaxTree> toReturn = new HashSet<SyntaxTree>();
+
+            BinaryExpressionSyntax binaryExpression = node as BinaryExpressionSyntax;
+            if(binaryExpression != null)
+            {
+                ISet<SyntaxToken> validMutations = validOperatorMutations(binaryExpression);
+            }
+            int x = 1 + 5;
+
+            return toReturn;
+        }
+
+        static ISet<SyntaxToken> validOperatorMutations(BinaryExpressionSyntax binaryExpression)
+        {
+            ISet<SyntaxToken> toReturn = new HashSet<SyntaxToken>();
+            SyntaxToken nodeOperator = binaryExpression.OperatorToken;
+            SyntaxKind kind = nodeOperator.Kind();
+            if (kind.Equals(SyntaxKind.PlusToken)) {
+                SyntaxFactory.Token(SyntaxKind.MinusToken);
+            }
         }
 
         static StreamReader getStreamReader(String filepath)
