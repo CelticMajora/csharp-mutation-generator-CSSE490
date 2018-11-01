@@ -11,10 +11,13 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace MutationCreator
 {
     class Program
-    {      
+    {
+        static ISet<SyntaxKind> binaryOperators = new HashSet<SyntaxKind>();
+        static ISet<SyntaxKind> unaryOperators = new HashSet<SyntaxKind>();
+
         static void Main(string[] args)
         {
-            if(args.Length < 1)
+            /*if(args.Length < 1)
             {
                 Console.WriteLine("Please include a C# filepath you would like to make mutations to and a directory to put mutations");
                 return;
@@ -23,61 +26,142 @@ namespace MutationCreator
             if(toMutate == null)
             {
                 return;
-            }
-            SyntaxTree tree = CSharpSyntaxTree.ParseText(GetFileText(toMutate));
-            Compilation compilation;
-            try
+            }*/
+            //SyntaxTree tree = CSharpSyntaxTree.ParseText(GetFileText(toMutate));
+            SyntaxTree tree = CSharpSyntaxTree.ParseText(@"class Program
             {
-                compilation = CompileCode(tree);
+                static void Main(string[] args)
+                {
+                    int x = 0;
+                    int y = 1;
+                    int z = y;
+                    if (x == 0)
+                    {
+                        y++;
+                    }
+                    else
+                    {
+                        --y;
+                    }
+                    x = y - 3;
+                }
             }
-            catch(Exception failedToCompile)
-            {
+            ");
+            Compilation compilation = CompileCode(tree);
+            
+            if(compilation == null) { 
                 Console.WriteLine("Unable to compile tree:" + tree.ToString());
-                Console.WriteLine(failedToCompile.ToString());
                 return;
             }
             SemanticModel model = compilation.GetSemanticModel(compilation.SyntaxTrees.First());
+
+            setupFields(); //Prepopulates lists of valid mutations
+
             ISet<SyntaxTree> mutations = makeMutations(tree, model);
+
+            removeNonCompilableCode(mutations);
+            
+            foreach(SyntaxTree mutatedTree in mutations)
+            {
+                Console.WriteLine(mutatedTree.ToString());
+                Console.WriteLine("\n\n\n\n\n");
+            }
         }
 
         static ISet<SyntaxTree> makeMutations(SyntaxTree ogTree, SemanticModel model)
         {            
-            return traverseTreeForMutations(ogTree.GetRoot());
+            return traverseTreeForMutations(ogTree.GetRoot(), ogTree.GetRoot());
         }
 
-        static ISet<SyntaxTree> traverseTreeForMutations(SyntaxNode node)
+        static ISet<SyntaxTree> traverseTreeForMutations(SyntaxNode node, SyntaxNode rootNode)
         {
-            ISet<SyntaxTree> mutationsForCurrentNode = getMutationsForNode(node);
+            ISet<SyntaxTree> mutationsForCurrentNode = getMutationsForNode(node, rootNode);
 
-            foreach (SyntaxNode descendant in node.DescendantNodes())
+            foreach (SyntaxNode descendant in node.ChildNodes())
             {
-                mutationsForCurrentNode.UnionWith(traverseTreeForMutations(descendant));
+                mutationsForCurrentNode.UnionWith(traverseTreeForMutations(descendant, rootNode));
             }
             return mutationsForCurrentNode;
         }
 
-        static ISet<SyntaxTree> getMutationsForNode(SyntaxNode node)
+        static ISet<SyntaxTree> getMutationsForNode(SyntaxNode node, SyntaxNode rootNode)
         {
             ISet<SyntaxTree> toReturn = new HashSet<SyntaxTree>();
 
             BinaryExpressionSyntax binaryExpression = node as BinaryExpressionSyntax;
+            PostfixUnaryExpressionSyntax postfixUnaryExpression = node as PostfixUnaryExpressionSyntax;
+            PrefixUnaryExpressionSyntax prefixUnaryExpression = node as PrefixUnaryExpressionSyntax;
+            StatementSyntax statement = node as StatementSyntax;
             if(binaryExpression != null)
             {
-                ISet<SyntaxToken> validMutations = validOperatorMutations(binaryExpression);
+                ISet<SyntaxToken> validMutations = validBinaryOperatorMutations(binaryExpression);
+                foreach(SyntaxToken mutatedToken in validMutations)
+                {
+                    SyntaxNode newRoot = rootNode.ReplaceNode(node, binaryExpression.WithOperatorToken(mutatedToken));
+                    toReturn.Add(newRoot.SyntaxTree);              
+                }
             }
-            int x = 1 + 5;
+            else if(postfixUnaryExpression != null)
+            {
+                ISet<SyntaxToken> validMutations = validUnaryOperatorMutations(postfixUnaryExpression);
+                foreach(SyntaxToken mutatedToken in validMutations)
+                {
+                    SyntaxNode newRoot = rootNode.ReplaceNode(node, postfixUnaryExpression.WithOperatorToken(mutatedToken));
+                    toReturn.Add(newRoot.SyntaxTree);
+                }
+            }
+            else if(prefixUnaryExpression != null)
+            {
+                ISet<SyntaxToken> validMutations = validUnaryOperatorMutations(prefixUnaryExpression);
+                foreach (SyntaxToken mutatedToken in validMutations)
+                {
+                    SyntaxNode newRoot = rootNode.ReplaceNode(node, prefixUnaryExpression.WithOperatorToken(mutatedToken));
+                    toReturn.Add(newRoot.SyntaxTree);
+                }
+            }
+            else if(statement != null)
+            {
+                //replace statements with semicolons
+                //toReturn.Add(rootNode.ReplaceNode(node, SyntaxFactory.EmptyStatement(SyntaxFactory.Token(SyntaxKind.SemicolonToken))).SyntaxTree);
+            }                      
 
             return toReturn;
         }
 
-        static ISet<SyntaxToken> validOperatorMutations(BinaryExpressionSyntax binaryExpression)
+        static ISet<SyntaxToken> validBinaryOperatorMutations(BinaryExpressionSyntax binaryExpression)
         {
             ISet<SyntaxToken> toReturn = new HashSet<SyntaxToken>();
-            SyntaxToken nodeOperator = binaryExpression.OperatorToken;
-            SyntaxKind kind = nodeOperator.Kind();
-            if (kind.Equals(SyntaxKind.PlusToken)) {
-                SyntaxFactory.Token(SyntaxKind.MinusToken);
+            ISet<SyntaxKind> kind = new HashSet<SyntaxKind>();
+            kind.Add(binaryExpression.OperatorToken.Kind());
+            foreach (SyntaxKind validKind in binaryOperators.Except(kind))
+            {
+                toReturn.Add(SyntaxFactory.Token(validKind));
+            }            
+            return toReturn;
+        }
+
+        static ISet<SyntaxToken> validUnaryOperatorMutations(PostfixUnaryExpressionSyntax postfixUnaryExpression)
+        {
+            ISet<SyntaxToken> toReturn = new HashSet<SyntaxToken>();
+            ISet<SyntaxKind> kind = new HashSet<SyntaxKind>();
+            kind.Add(postfixUnaryExpression.OperatorToken.Kind());
+            foreach(SyntaxKind validKind in unaryOperators.Except(kind))
+            {
+                toReturn.Add(SyntaxFactory.Token(validKind));
             }
+            return toReturn;
+        }
+
+        static ISet<SyntaxToken> validUnaryOperatorMutations(PrefixUnaryExpressionSyntax prefixUnaryExpression)
+        {
+            ISet<SyntaxToken> toReturn = new HashSet<SyntaxToken>();
+            ISet<SyntaxKind> kind = new HashSet<SyntaxKind>();
+            kind.Add(prefixUnaryExpression.OperatorToken.Kind());
+            foreach (SyntaxKind validKind in unaryOperators.Except(kind))
+            {
+                toReturn.Add(SyntaxFactory.Token(validKind));
+            }
+            return toReturn;
         }
 
         static StreamReader getStreamReader(String filepath)
@@ -121,9 +205,21 @@ namespace MutationCreator
             return fileContents.ToString();
         }
 
+        static void removeNonCompilableCode(ISet<SyntaxTree> mutations)
+        {
+            ISet<SyntaxTree> toRemove = new HashSet<SyntaxTree>();
+            foreach(SyntaxTree mutation in mutations)
+            {
+                if(CompileCode(mutation) == null)
+                {
+                    toRemove.Add(mutation);
+                }
+            }
+            mutations.ExceptWith(toRemove);
+        }
+
         static CSharpCompilation CompileCode(SyntaxTree tree)
         {
-            Console.WriteLine("=====COMPILATION=====");
             // Q: What does CSharpCompilation.Create do?
             var Mscorlib = MetadataReference.CreateFromFile(typeof(object).Assembly.Location);
             var linq = MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location);
@@ -139,10 +235,38 @@ namespace MutationCreator
             // FIXME: how do I abort on only the most serious errors?
             if (compilation.GetDiagnostics().Where(msg => msg.Severity == DiagnosticSeverity.Error).Count() > 0)
             {
-                throw new Exception("Compilation failed.");
+                return null;
             }
 
             return compilation;
+        }
+
+        static void setupFields()
+        {
+            setupBinaryOperators();
+            setupUnaryOperators();
+        }
+
+        static void setupBinaryOperators()
+        {
+            binaryOperators.Clear();
+            binaryOperators.Add(SyntaxKind.PlusToken);
+            binaryOperators.Add(SyntaxKind.MinusToken);
+            binaryOperators.Add(SyntaxKind.AsteriskToken);
+            binaryOperators.Add(SyntaxKind.SlashToken);
+            binaryOperators.Add(SyntaxKind.EqualsEqualsToken);
+            binaryOperators.Add(SyntaxKind.ExclamationEqualsToken);
+            binaryOperators.Add(SyntaxKind.LessThanToken);
+            binaryOperators.Add(SyntaxKind.LessThanEqualsToken);
+            binaryOperators.Add(SyntaxKind.GreaterThanToken);
+            binaryOperators.Add(SyntaxKind.GreaterThanEqualsToken);
+        }
+
+        static void setupUnaryOperators()
+        {
+            unaryOperators.Clear();
+            unaryOperators.Add(SyntaxKind.PlusPlusToken);
+            unaryOperators.Add(SyntaxKind.MinusMinusToken);
         }
     }
 }
