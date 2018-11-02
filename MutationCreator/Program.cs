@@ -44,6 +44,20 @@ namespace MutationCreator
                         --y;
                     }
                     x = y - 3;
+                    x = y;
+                    for (int i = 0; i < 12; ++i)
+                    {
+                        bool yo = false;
+                    }
+                    while (y < 12)
+                    {
+                        bool dagga = true;
+                        y = y + 1;
+                        if (dagga)
+                        {
+                            y = y + 1;
+                        }
+                    }
                 }
             }
             ");
@@ -91,7 +105,9 @@ namespace MutationCreator
             BinaryExpressionSyntax binaryExpression = node as BinaryExpressionSyntax;
             PostfixUnaryExpressionSyntax postfixUnaryExpression = node as PostfixUnaryExpressionSyntax;
             PrefixUnaryExpressionSyntax prefixUnaryExpression = node as PrefixUnaryExpressionSyntax;
+            BlockSyntax block = node as BlockSyntax;
             StatementSyntax statement = node as StatementSyntax;
+            IdentifierNameSyntax identifierName = node as IdentifierNameSyntax;            
             if(binaryExpression != null)
             {
                 ISet<SyntaxToken> validMutations = validBinaryOperatorMutations(binaryExpression);
@@ -119,11 +135,15 @@ namespace MutationCreator
                     toReturn.Add(newRoot.SyntaxTree);
                 }
             }
-            else if(statement != null)
+            else if(statement != null && block == null)
             {
                 //replace statements with semicolons
-                //toReturn.Add(rootNode.ReplaceNode(node, SyntaxFactory.EmptyStatement(SyntaxFactory.Token(SyntaxKind.SemicolonToken))).SyntaxTree);
-            }                      
+                toReturn.Add(rootNode.ReplaceNode(node, SyntaxFactory.EmptyStatement(SyntaxFactory.Token(SyntaxKind.SemicolonToken))).SyntaxTree);
+            }
+            else if(identifierName != null)
+            {
+                //Go through reaching definitions and replace with all other variables available
+            }
 
             return toReturn;
         }
