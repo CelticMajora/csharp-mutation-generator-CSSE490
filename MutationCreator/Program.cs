@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -17,50 +16,25 @@ namespace MutationCreator
 
         static void Main(string[] args)
         {
-            /*if(args.Length < 1)
+            if(args.Length != 2)
             {
                 Console.WriteLine("Please include a C# filepath you would like to make mutations to and a directory to put mutations");
                 return;
             }
+            if (!args[0].EndsWith(".cs"))
+            {
+                Console.WriteLine("Please include a single C# file with file extension .cs");
+                return;
+            }
+
             StreamReader toMutate = getStreamReader(args[0]);
             if(toMutate == null)
             {
                 return;
-            }*/
-            //SyntaxTree tree = CSharpSyntaxTree.ParseText(GetFileText(toMutate));
-            SyntaxTree tree = CSharpSyntaxTree.ParseText(@"class Program
-            {
-                static void Main(string[] args)
-                {
-                    int x = 0;
-                    int y = 1;
-                    int z = y;
-                    if (x == 0)
-                    {
-                        y++;
-                    }
-                    else
-                    {
-                        --y;
-                    }
-                    x = y - 3;
-                    x = y;
-                    for (int i = 0; i < 12; ++i)
-                    {
-                        bool yo = false;
-                    }
-                    while (y < 12)
-                    {
-                        bool dagga = true;
-                        y = y + 1;
-                        if (dagga)
-                        {
-                            y = y + 1;
-                        }
-                    }
-                }
             }
-            ");
+
+            SyntaxTree tree = CSharpSyntaxTree.ParseText(GetFileText(toMutate));
+            
             Compilation compilation = CompileCode(tree);
             
             if(compilation == null) { 
@@ -74,11 +48,23 @@ namespace MutationCreator
             ISet<SyntaxTree> mutations = makeMutations(tree, model);
 
             removeNonCompilableCode(mutations);
-            
-            foreach(SyntaxTree mutatedTree in mutations)
+
+            int index = 0;
+            string folder = args[1] + @"\Output-" + DateTime.Now.ToString("yyyyMMddHHmmss");
+            try
             {
-                Console.WriteLine(mutatedTree.ToString());
-                Console.WriteLine("\n\n\n\n\n");
+                Directory.CreateDirectory(folder);
+            }
+            catch(Exception e)
+            {
+                Console.WriteLine("Output path invalid");
+                Console.WriteLine(e.ToString());
+                return;
+            }
+            foreach (SyntaxTree mutatedTree in mutations)
+            {
+                File.WriteAllText(folder + @"\Mutant" + index + ".cs", mutatedTree.ToString());
+                index++;
             }
         }
 
@@ -143,6 +129,7 @@ namespace MutationCreator
             else if(identifierName != null)
             {
                 //Go through reaching definitions and replace with all other variables available
+                //TODO: Integrate Reaching Variable?
             }
 
             return toReturn;
@@ -240,19 +227,11 @@ namespace MutationCreator
 
         static CSharpCompilation CompileCode(SyntaxTree tree)
         {
-            // Q: What does CSharpCompilation.Create do?
             var Mscorlib = MetadataReference.CreateFromFile(typeof(object).Assembly.Location);
             var linq = MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location);
             var compilation = CSharpCompilation.Create("MyCompilation",
                 syntaxTrees: new[] { tree }, references: new[] { Mscorlib, linq });
 
-            // Print all the ways this snippet is horribly coded.
-            // FIXME: how do we fix the Linq error?
-            //Console.WriteLine("Compile errors: ");
-            //Console.WriteLine(compilation.GetDiagnostics().Select(s => s.ToString()).Aggregate((s, s2) => s.ToString() + " " + s2.ToString()));
-            //Console.WriteLine();
-
-            // FIXME: how do I abort on only the most serious errors?
             if (compilation.GetDiagnostics().Where(msg => msg.Severity == DiagnosticSeverity.Error).Count() > 0)
             {
                 return null;
