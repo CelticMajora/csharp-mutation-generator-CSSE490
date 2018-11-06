@@ -35,17 +35,16 @@ namespace MutationCreator
 
             SyntaxTree tree = CSharpSyntaxTree.ParseText(GetFileText(toMutate));
             
-            Compilation compilation = CompileCode(tree);
+            Compilation compilation = CompileCode(tree);            
             
             if(compilation == null) { 
                 Console.WriteLine("Unable to compile tree:" + tree.ToString());
                 return;
             }
-            SemanticModel model = compilation.GetSemanticModel(compilation.SyntaxTrees.First());
 
             setupFields(); //Prepopulates lists of valid mutations
 
-            ISet<SyntaxTree> mutations = makeMutations(tree, model);
+            ISet<SyntaxTree> mutations = makeMutations(tree);
 
             removeNonCompilableCode(mutations);
 
@@ -68,14 +67,26 @@ namespace MutationCreator
             }
         }
 
-        static ISet<SyntaxTree> makeMutations(SyntaxTree ogTree, SemanticModel model)
+        static ISet<SyntaxTree> makeMutations(SyntaxTree ogTree)
         {            
             return traverseTreeForMutations(ogTree.GetRoot(), ogTree.GetRoot());
         }
 
         static ISet<SyntaxTree> traverseTreeForMutations(SyntaxNode node, SyntaxNode rootNode)
         {
-            ISet<SyntaxTree> mutationsForCurrentNode = getMutationsForNode(node, rootNode);
+            ISet<SyntaxTree> mutationsForCurrentNode;
+
+            MethodDeclarationSyntax methodDeclaration = node as MethodDeclarationSyntax;
+            if(methodDeclaration != null)
+            {
+                ControlFlowGraph CFG = new ControlFlowGraph(methodDeclaration);
+                DataFlow dataFlow = new DataFlow(methodDeclaration, CFG);
+                mutationsForCurrentNode = getMutationsForNode(node, rootNode, dataFlow);
+            }
+            else
+            {
+                mutationsForCurrentNode = getMutationsForNode(node, rootNode);
+            }                        
 
             foreach (SyntaxNode descendant in node.ChildNodes())
             {
@@ -84,7 +95,7 @@ namespace MutationCreator
             return mutationsForCurrentNode;
         }
 
-        static ISet<SyntaxTree> getMutationsForNode(SyntaxNode node, SyntaxNode rootNode)
+        static ISet<SyntaxTree> getMutationsForNode(SyntaxNode node, SyntaxNode rootNode, DataFlow optionalDataFlow = null)
         {
             ISet<SyntaxTree> toReturn = new HashSet<SyntaxTree>();
 
@@ -126,10 +137,11 @@ namespace MutationCreator
                 //replace statements with semicolons
                 toReturn.Add(rootNode.ReplaceNode(node, SyntaxFactory.EmptyStatement(SyntaxFactory.Token(SyntaxKind.SemicolonToken))).SyntaxTree);
             }
-            else if(identifierName != null)
+            else if(identifierName != null && optionalDataFlow != null)
             {
                 //Go through reaching definitions and replace with all other variables available
                 //TODO: Integrate Reaching Variable?
+
             }
 
             return toReturn;
