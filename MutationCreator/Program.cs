@@ -153,19 +153,30 @@ namespace MutationCreator
         static ISet<SyntaxToken> validIdentifierNames(IdentifierNameSyntax identifierName, DataFlow dataFlow)
         {
             ISet<SyntaxToken> toReturn = new HashSet<SyntaxToken>();
+            ISet<SyntaxNode> defs = new HashSet<SyntaxNode>();
 
+            //Not totally satisfied with my method here. It feels jank, but due to the way I did the CFG and data flow, it is what works.
             if(dataFlow.containsReachingDef(identifierName))
             {
-                ISet<SyntaxNode> defs = dataFlow.GetReachingDefinitions(identifierName);
-                foreach (SyntaxNode def in defs)
+                defs = dataFlow.GetReachingDefinitions(identifierName);
+            }
+            else if (dataFlow.containsReachingDef(identifierName.Parent))
+            {
+                defs = dataFlow.GetReachingDefinitions(identifierName.Parent);
+            }
+            else if (dataFlow.containsReachingDef(identifierName.Parent.Parent))
+            {
+                defs = dataFlow.GetReachingDefinitions(identifierName.Parent.Parent);                
+            }
+
+            foreach (SyntaxNode def in defs)
+            {
+                String varName = DataFlow.getAssignmentOrLocalVarName(def);
+                if (!varName.Equals(identifierName.Identifier.Text))
                 {
-                    String varName = DataFlow.getAssignmentOrLocalVarName(def);
-                    if (!varName.Equals(identifierName.Identifier.Text))
-                    {
-                        toReturn.Add(SyntaxFactory.Identifier(varName));
-                    }
+                    toReturn.Add(SyntaxFactory.Identifier(varName));
                 }
-            }            
+            }
 
             return toReturn;            
         }
@@ -281,6 +292,7 @@ namespace MutationCreator
             setupUnaryOperators();
             syntaxTrivias = new SyntaxTriviaList();
             syntaxTrivias.Add(SyntaxFactory.SyntaxTrivia(SyntaxKind.SingleLineCommentTrivia, "Mutation"));
+            syntaxTrivias.Add(SyntaxFactory.EndOfLine("eof"));
         }
 
         static void setupBinaryOperators()

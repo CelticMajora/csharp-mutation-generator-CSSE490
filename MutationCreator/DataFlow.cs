@@ -40,7 +40,7 @@ namespace MutationCreator
             }            
         }
 
-        public bool containsReachingDef(IdentifierNameSyntax identifierName)
+        public bool containsReachingDef(SyntaxNode identifierName)
         {
             return reachingDefDictionary.ContainsKey(identifierName);
         }
@@ -394,7 +394,7 @@ namespace MutationCreator
             return null;
         }
 
-        public ISet<SyntaxNode> GetReachingDefinitions(IdentifierNameSyntax use)
+        public ISet<SyntaxNode> GetReachingDefinitions(SyntaxNode use)
         {
             return reachingDefDictionary[use].inSet as ISet<SyntaxNode>;
         }
