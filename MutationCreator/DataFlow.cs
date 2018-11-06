@@ -40,6 +40,11 @@ namespace MutationCreator
             }            
         }
 
+        public bool containsReachingDef(IdentifierNameSyntax identifierName)
+        {
+            return reachingDefDictionary.ContainsKey(identifierName);
+        }
+
         public static ISet<T> copySet<T>(ISet<T> original) where T: SyntaxNode
         {
             ISet<T> toReturn = new HashSet<T>();
@@ -361,7 +366,7 @@ namespace MutationCreator
             }
         }
 
-        private static String getAssignmentOrLocalVarName(SyntaxNode node)
+        public static String getAssignmentOrLocalVarName(SyntaxNode node)
         {
             AssignmentExpressionSyntax assignmentExpressionSyntax = node as AssignmentExpressionSyntax;
             if(assignmentExpressionSyntax != null)

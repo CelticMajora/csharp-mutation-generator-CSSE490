@@ -13,6 +13,7 @@ namespace MutationCreator
     {
         static ISet<SyntaxKind> binaryOperators = new HashSet<SyntaxKind>();
         static ISet<SyntaxKind> unaryOperators = new HashSet<SyntaxKind>();
+        static SyntaxTriviaList syntaxTrivias = new SyntaxTriviaList();
 
         static void Main(string[] args)
         {
@@ -62,6 +63,8 @@ namespace MutationCreator
             }
             foreach (SyntaxTree mutatedTree in mutations)
             {
+                Console.WriteLine(mutatedTree.ToString());
+                Console.WriteLine("\n\n\n\n\n");
                 File.WriteAllText(folder + @"\Mutant" + index + ".cs", mutatedTree.ToString());
                 index++;
             }
@@ -69,10 +72,10 @@ namespace MutationCreator
 
         static ISet<SyntaxTree> makeMutations(SyntaxTree ogTree)
         {            
-            return traverseTreeForMutations(ogTree.GetRoot(), ogTree.GetRoot());
+            return traverseTreeForMutations(ogTree.GetRoot(), ogTree.GetRoot(), null);
         }
 
-        static ISet<SyntaxTree> traverseTreeForMutations(SyntaxNode node, SyntaxNode rootNode)
+        static ISet<SyntaxTree> traverseTreeForMutations(SyntaxNode node, SyntaxNode rootNode, DataFlow dataFlow)
         {
             ISet<SyntaxTree> mutationsForCurrentNode;
 
@@ -80,17 +83,13 @@ namespace MutationCreator
             if(methodDeclaration != null)
             {
                 ControlFlowGraph CFG = new ControlFlowGraph(methodDeclaration);
-                DataFlow dataFlow = new DataFlow(methodDeclaration, CFG);
-                mutationsForCurrentNode = getMutationsForNode(node, rootNode, dataFlow);
+                dataFlow = new DataFlow(methodDeclaration, CFG);
             }
-            else
-            {
-                mutationsForCurrentNode = getMutationsForNode(node, rootNode);
-            }                        
+            mutationsForCurrentNode = getMutationsForNode(node, rootNode, dataFlow);
 
             foreach (SyntaxNode descendant in node.ChildNodes())
             {
-                mutationsForCurrentNode.UnionWith(traverseTreeForMutations(descendant, rootNode));
+                mutationsForCurrentNode.UnionWith(traverseTreeForMutations(descendant, rootNode, dataFlow));
             }
             return mutationsForCurrentNode;
         }
@@ -110,7 +109,7 @@ namespace MutationCreator
                 ISet<SyntaxToken> validMutations = validBinaryOperatorMutations(binaryExpression);
                 foreach(SyntaxToken mutatedToken in validMutations)
                 {
-                    SyntaxNode newRoot = rootNode.ReplaceNode(node, binaryExpression.WithOperatorToken(mutatedToken));
+                    SyntaxNode newRoot = rootNode.ReplaceNode(node, binaryExpression.WithOperatorToken(mutatedToken).WithTrailingTrivia(syntaxTrivias));
                     toReturn.Add(newRoot.SyntaxTree);              
                 }
             }
@@ -119,7 +118,7 @@ namespace MutationCreator
                 ISet<SyntaxToken> validMutations = validUnaryOperatorMutations(postfixUnaryExpression);
                 foreach(SyntaxToken mutatedToken in validMutations)
                 {
-                    SyntaxNode newRoot = rootNode.ReplaceNode(node, postfixUnaryExpression.WithOperatorToken(mutatedToken));
+                    SyntaxNode newRoot = rootNode.ReplaceNode(node, postfixUnaryExpression.WithOperatorToken(mutatedToken).WithTrailingTrivia(syntaxTrivias));
                     toReturn.Add(newRoot.SyntaxTree);
                 }
             }
@@ -128,23 +127,47 @@ namespace MutationCreator
                 ISet<SyntaxToken> validMutations = validUnaryOperatorMutations(prefixUnaryExpression);
                 foreach (SyntaxToken mutatedToken in validMutations)
                 {
-                    SyntaxNode newRoot = rootNode.ReplaceNode(node, prefixUnaryExpression.WithOperatorToken(mutatedToken));
+                    SyntaxNode newRoot = rootNode.ReplaceNode(node, prefixUnaryExpression.WithOperatorToken(mutatedToken).WithTrailingTrivia(syntaxTrivias));
                     toReturn.Add(newRoot.SyntaxTree);
                 }
             }
             else if(statement != null && block == null)
             {
                 //replace statements with semicolons
-                toReturn.Add(rootNode.ReplaceNode(node, SyntaxFactory.EmptyStatement(SyntaxFactory.Token(SyntaxKind.SemicolonToken))).SyntaxTree);
+                toReturn.Add(rootNode.ReplaceNode(node, SyntaxFactory.EmptyStatement(SyntaxFactory.Token(SyntaxKind.SemicolonToken)).WithTrailingTrivia(syntaxTrivias)).SyntaxTree);
             }
             else if(identifierName != null && optionalDataFlow != null)
             {
                 //Go through reaching definitions and replace with all other variables available
-                //TODO: Integrate Reaching Variable?
-
+                ISet<SyntaxToken> validMutations = validIdentifierNames(identifierName, optionalDataFlow);
+                foreach(SyntaxToken mutatedToken in validMutations)
+                {
+                    SyntaxNode newRoot = rootNode.ReplaceNode(node, identifierName.WithIdentifier(mutatedToken).WithTrailingTrivia(syntaxTrivias));
+                    toReturn.Add(newRoot.SyntaxTree);
+                }
             }
 
             return toReturn;
+        }
+
+        static ISet<SyntaxToken> validIdentifierNames(IdentifierNameSyntax identifierName, DataFlow dataFlow)
+        {
+            ISet<SyntaxToken> toReturn = new HashSet<SyntaxToken>();
+
+            if(dataFlow.containsReachingDef(identifierName))
+            {
+                ISet<SyntaxNode> defs = dataFlow.GetReachingDefinitions(identifierName);
+                foreach (SyntaxNode def in defs)
+                {
+                    String varName = DataFlow.getAssignmentOrLocalVarName(def);
+                    if (!varName.Equals(identifierName.Identifier.Text))
+                    {
+                        toReturn.Add(SyntaxFactory.Identifier(varName));
+                    }
+                }
+            }            
+
+            return toReturn;            
         }
 
         static ISet<SyntaxToken> validBinaryOperatorMutations(BinaryExpressionSyntax binaryExpression)
@@ -256,6 +279,8 @@ namespace MutationCreator
         {
             setupBinaryOperators();
             setupUnaryOperators();
+            syntaxTrivias = new SyntaxTriviaList();
+            syntaxTrivias.Add(SyntaxFactory.SyntaxTrivia(SyntaxKind.SingleLineCommentTrivia, "Mutation"));
         }
 
         static void setupBinaryOperators()
